@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install librespot with pipe backend and libmdns for zeroconf discovery
-RUN cargo install librespot --no-default-features --features "pipe-backend with-libmdns"
+# Install librespot
+RUN cargo install librespot
 
 # ==============================================================================
 # Stage 2: Build Node.js TypeScript application
