@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  spotbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: spotify-connect-discord-bot
+    restart: unless-stopped
+    # Use host network mode so Spotify Connect mDNS / Zeroconf discovery works on the local network.
+    # Note: If running on cloud VPS without Zeroconf, provide SPOTIFY_USERNAME and SPOTIFY_PASSWORD in .env
+    network_mode: host
+    env_file:
+      - .env
+    volumes:
+      # Persist Librespot credentials, token cache, and session data
+      - ./cache:/app/cache
+    environment:
+      - NODE_ENV=production
+      - LIBRESPOT_PATH=/usr/local/bin/librespot
+      - LIBRESPOT_CACHE_DIR=/app/cache
