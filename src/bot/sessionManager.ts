@@ -77,6 +77,13 @@ export class SessionManager {
       selfMute: false,
     });
 
+    connection.on('stateChange', (oldState, newState) => {
+      console.log(`[VoiceConnection:${guildId}] ${oldState.status} -> ${newState.status}`);
+    });
+    connection.on('error', (err) => {
+      console.error(`[VoiceConnection:${guildId}] error:`, err);
+    });
+
     // Wait for connection to become ready (max 15 seconds)
     try {
       await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
