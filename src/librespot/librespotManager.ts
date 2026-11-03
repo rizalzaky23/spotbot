@@ -92,10 +92,11 @@ export class LibrespotManager extends EventEmitter {
     this.status = 'starting';
     this.emit('statusChange', this.status);
 
-    // Ensure session cache directory exists
+    let hasValidCache = false;
     if (this.options.cacheDir) {
       try {
         fs.mkdirSync(this.options.cacheDir, { recursive: true });
+        hasValidCache = true;
       } catch (err) {
         console.warn(`[LibrespotManager] Failed to create cache dir: ${err}`);
       }
@@ -118,12 +119,12 @@ export class LibrespotManager extends EventEmitter {
       'speaker',
     ];
 
-    if (this.options.cacheDir) {
+    if (hasValidCache && this.options.cacheDir) {
       args.push('--cache', this.options.cacheDir);
     }
 
-    if (this.options.enableDiscovery) {
-      args.push('--enable-discovery');
+    if (this.options.enableDiscovery === false) {
+      args.push('--disable-discovery');
     }
 
     // Direct account credentials if specified
@@ -194,8 +195,8 @@ export class LibrespotManager extends EventEmitter {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      if (config.LOG_LEVEL === 'debug') {
-        console.debug(`[librespot:${this.options.guildId}] ${trimmed}`);
+      if (config.LOG_LEVEL === 'debug' || /error|warn|fail/i.test(trimmed)) {
+        console.log(`[librespot:${this.options.guildId}] ${trimmed}`);
       }
 
       // Detect track loading
