@@ -15,5 +15,5 @@ services:
       - ./cache:/app/cache
     environment:
       - NODE_ENV=production
-      - LIBRESPOT_PATH=/usr/local/bin/librespot
+      - LIBRESPOT_PATH=/usr/bin/librespot
       - LIBRESPOT_CACHE_DIR=/app/cache
