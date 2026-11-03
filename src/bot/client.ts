@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, Events, GatewayIntentBits } from 'discord.js';
 import { onReady } from './events/ready.js';
 import { onInteractionCreate } from './events/interactionCreate.js';
 import { onVoiceStateUpdate } from './events/voiceStateUpdate.js';
@@ -11,9 +11,9 @@ export function createBotClient(): Client {
     ],
   });
 
-  client.once('ready', () => onReady(client));
-  client.on('interactionCreate', onInteractionCreate);
-  client.on('voiceStateUpdate', onVoiceStateUpdate);
+  client.once(Events.ClientReady, () => onReady(client));
+  client.on(Events.InteractionCreate, onInteractionCreate);
+  client.on(Events.VoiceStateUpdate, onVoiceStateUpdate);
 
   return client;
 }
