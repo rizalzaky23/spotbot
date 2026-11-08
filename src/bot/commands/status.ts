@@ -5,12 +5,13 @@ import {
 } from 'discord.js';
 import { Command } from './types.js';
 import { SessionManager } from '../sessionManager.js';
+import { QueueManager } from '../queueManager.js';
 import { config } from '../../config/env.js';
 
 export const statusCommand: Command = {
   data: new SlashCommandBuilder()
     .setName('status')
-    .setDescription('Displays connection status, active Spotify playback, and audio metrics'),
+    .setDescription('Displays connection status, active playback, and audio metrics'),
 
   async execute(interaction: ChatInputCommandInteraction) {
     if (!interaction.guild) {
@@ -29,14 +30,12 @@ export const statusCommand: Command = {
         .setColor(0x808080)
         .setTitle('⚪ Status: Idle')
         .setDescription(
-          'Not connected to any voice channel.\nUse `/connect` while in a voice channel to start Spotify Connect.'
+          'Not connected to any voice channel.\nUse `/play <judul/link>` to play music or `/connect` for Spotify Connect.'
         );
       await interaction.reply({ embeds: [embed] });
       return;
     }
 
-    const currentTrack = session.librespot.getCurrentTrack();
-    const playbackStatus = session.librespot.getStatus();
     const playerStatus = session.audioBridge.getPlayerStatus();
     const volume = session.audioBridge.getVolume();
     const uptimeSeconds = session.startedAt
@@ -49,6 +48,62 @@ export const statusCommand: Command = {
       return `${m}m ${s}s`;
     };
 
+    if (session.mode === 'queue') {
+      const queue = QueueManager.getInstance().getQueue(interaction.guild.id);
+      const currentTrack = queue?.currentTrack;
+
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle('📊 SpotBot Status — Music Player')
+        .addFields(
+          {
+            name: '🔊 Voice Channel',
+            value: `<#${session.channelId}>`,
+            inline: true,
+          },
+          {
+            name: '📻 Player State',
+            value: `\`${playerStatus.toUpperCase()}\``,
+            inline: true,
+          },
+          {
+            name: '🎚️ Volume',
+            value: `${volume}%`,
+            inline: true,
+          },
+          {
+            name: '🎵 Lagu Saat Ini',
+            value: currentTrack
+              ? `[**${currentTrack.title}**](${currentTrack.url})\n👤 ${currentTrack.author} • ⏱️ ${currentTrack.duration}`
+              : '*Tidak ada lagu yang sedang diputar*',
+            inline: false,
+          },
+          {
+            name: '✨ Autoplay Selaras',
+            value: queue?.isAutoplay ? '🟢 **Aktif**' : '⚪ Nonaktif',
+            inline: true,
+          },
+          {
+            name: '📑 Sisa Antrean',
+            value: `\`${queue?.tracks.length || 0} lagu\``,
+            inline: true,
+          },
+          {
+            name: '⏱️ Uptime Sesi',
+            value: formatUptime(uptimeSeconds),
+            inline: true,
+          }
+        )
+        .setTimestamp();
+
+      await interaction.reply({ embeds: [embed] });
+      return;
+    }
+
+    // Spotify Connect Mode
+    const currentTrack = session.librespot?.getCurrentTrack();
+    const playbackStatus = session.librespot?.getStatus() || 'idle';
+
     const statusIcons: Record<string, string> = {
       playing: '▶️ Playing',
       paused: '⏸️ Paused',
@@ -60,7 +115,7 @@ export const statusCommand: Command = {
 
     const embed = new EmbedBuilder()
       .setColor(playbackStatus === 'playing' ? 0x1db954 : 0x3498db)
-      .setTitle('📊 Spotify Connect Bot Status')
+      .setTitle('📊 SpotBot Status — Spotify Connect')
       .addFields(
         {
           name: '🔊 Voice Channel',
@@ -69,7 +124,7 @@ export const statusCommand: Command = {
         },
         {
           name: '📱 Device Name',
-          value: `\`${session.librespot.getDeviceName()}\``,
+          value: `\`${session.librespot?.getDeviceName() ?? 'N/A'}\``,
           inline: true,
         },
         {
@@ -105,7 +160,7 @@ export const statusCommand: Command = {
         },
         {
           name: '⚙️ Librespot Process',
-          value: `PID: \`${session.librespot.getPid() ?? 'N/A'}\` | Uptime: \`${formatUptime(
+          value: `PID: \`${session.librespot?.getPid() ?? 'N/A'}\` | Uptime: \`${formatUptime(
             uptimeSeconds
           )}\``,
           inline: false,

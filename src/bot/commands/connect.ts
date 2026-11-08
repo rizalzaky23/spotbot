@@ -48,7 +48,7 @@ export const connectCommand: Command = {
     try {
       const sessionManager = SessionManager.getInstance();
       const session = await sessionManager.createSession(voiceChannel);
-      const deviceName = session.librespot.getDeviceName();
+      const deviceName = session.librespot?.getDeviceName() ?? config.LIBRESPOT_DEVICE_NAME_PREFIX;
 
       const embed = new EmbedBuilder()
         .setColor(0x1db954) // Spotify Green

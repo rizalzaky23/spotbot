@@ -126,4 +126,76 @@ export class FFmpegResampler {
       destroy: cleanup,
     };
   }
+
+  /**
+   * Resamples an arbitrary audio stream (from yt-dlp, webm, opus, mp3, etc.)
+   * into Discord standard 48kHz 16-bit Stereo PCM.
+   */
+  public static createArbitraryResampleStream(inputStream: Readable): {
+    outputStream: Readable;
+    childProcess: ChildProcess;
+    destroy: () => void;
+  } {
+    const ffmpegPath = this.getFfmpegBinary();
+    const args = [
+      '-loglevel',
+      'warning',
+      '-i',
+      'pipe:0',
+      '-f',
+      's16le',
+      '-ar',
+      String(AUDIO_CONSTANTS.DISCORD_SAMPLE_RATE),
+      '-ac',
+      String(AUDIO_CONSTANTS.DISCORD_CHANNELS),
+      'pipe:1',
+    ];
+
+    const child = spawn(ffmpegPath, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      const msg = data.toString('utf-8').trim();
+      if (msg) console.debug(`[FFmpeg:arbitrary] ${msg}`);
+    });
+
+    const outputPassThrough = new PassThrough({
+      highWaterMark: 1024 * 64,
+    });
+
+    if (child.stdin) {
+      inputStream.pipe(child.stdin);
+    }
+    if (child.stdout) {
+      child.stdout.pipe(outputPassThrough);
+    }
+
+    const cleanup = () => {
+      try {
+        if (!child.killed) child.kill('SIGKILL');
+      } catch {
+        // Ignore
+      }
+      if (!outputPassThrough.destroyed) outputPassThrough.destroy();
+    };
+
+    child.on('error', (err) => {
+      console.error('[FFmpegResampler:arbitrary] FFmpeg error:', err);
+      cleanup();
+    });
+
+    child.on('close', (code) => {
+      if (code !== 0 && code !== null) {
+        console.warn(`[FFmpegResampler:arbitrary] FFmpeg exited with code ${code}`);
+      }
+      cleanup();
+    });
+
+    return {
+      outputStream: outputPassThrough,
+      childProcess: child,
+      destroy: cleanup,
+    };
+  }
 }

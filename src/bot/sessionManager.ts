@@ -8,14 +8,16 @@ import { VoiceBasedChannel } from 'discord.js';
 import { LibrespotManager } from '../librespot/librespotManager.js';
 import { AudioBridge } from '../audio/audioBridge.js';
 import { config } from '../config/env.js';
+import { QueueManager } from './queueManager.js';
 
 export interface GuildSession {
   guildId: string;
   channelId: string;
   channelName: string;
   connection: VoiceConnection;
-  librespot: LibrespotManager;
+  librespot: LibrespotManager | null;
   audioBridge: AudioBridge;
+  mode: 'spotify' | 'queue';
   emptyTimeout: NodeJS.Timeout | null;
   startedAt: Date;
 }
@@ -56,47 +58,100 @@ export class SessionManager {
   }
 
   /**
-   * Creates and establishes a new Spotify Connect session in a Discord voice channel.
+   * Helper to set up voice connection event listeners.
    */
-  public async createSession(channel: VoiceBasedChannel): Promise<GuildSession> {
-    const guildId = channel.guild.id;
-
-    // Disconnect existing session if present
-    if (this.sessions.has(guildId)) {
-      await this.destroySession(guildId);
-    }
-
-    console.log(`[SessionManager] Joining voice channel: "${channel.name}" (${channel.id})`);
-
-    // 1. Join Voice Channel
-    const connection = joinVoiceChannel({
-      channelId: channel.id,
-      guildId: channel.guild.id,
-      adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: false,
-      selfMute: false,
-    });
-
+  private setupConnectionListeners(connection: VoiceConnection, guildId: string): void {
     connection.on('stateChange', (oldState, newState) => {
       console.log(`[VoiceConnection:${guildId}] ${oldState.status} -> ${newState.status}`);
     });
+
     connection.on('error', (err) => {
       console.error(`[VoiceConnection:${guildId}] error:`, err);
     });
 
-    // Wait for connection to become ready (max 15 seconds)
-    try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
-      console.log(`[SessionManager] Voice connection ready for guild ${guildId}`);
-    } catch (err) {
-      connection.destroy();
-      throw new Error(`Failed to establish voice connection: ${err}`);
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      try {
+        await Promise.race([
+          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+        ]);
+      } catch {
+        console.log(
+          `[SessionManager] Voice connection disconnected permanently for guild ${guildId}`
+        );
+        await this.destroySession(guildId);
+      }
+    });
+  }
+
+  /**
+   * Creates or switches to a Spotify Connect session in a Discord voice channel.
+   */
+  public async createSession(channel: VoiceBasedChannel): Promise<GuildSession> {
+    const guildId = channel.guild.id;
+    let session = this.sessions.get(guildId);
+
+    if (session) {
+      // If switching from queue mode, stop queue
+      QueueManager.getInstance().destroyQueue(guildId);
+      session.audioBridge.stopPlayback();
+
+      // If previous Librespot was active, stop it
+      if (session.librespot) {
+        await session.librespot.stop().catch(() => {});
+        session.librespot = null;
+      }
+
+      // If user is in a different voice channel, move connection
+      if (session.channelId !== channel.id) {
+        session.connection = joinVoiceChannel({
+          channelId: channel.id,
+          guildId: channel.guild.id,
+          adapterCreator: channel.guild.voiceAdapterCreator,
+          selfDeaf: false,
+          selfMute: false,
+        });
+        session.channelId = channel.id;
+        session.channelName = channel.name;
+        await entersState(session.connection, VoiceConnectionStatus.Ready, 15_000);
+      }
+    } else {
+      console.log(`[SessionManager] Joining voice channel: "${channel.name}" (${channel.id})`);
+      const connection = joinVoiceChannel({
+        channelId: channel.id,
+        guildId: channel.guild.id,
+        adapterCreator: channel.guild.voiceAdapterCreator,
+        selfDeaf: false,
+        selfMute: false,
+      });
+
+      this.setupConnectionListeners(connection, guildId);
+
+      try {
+        await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+        console.log(`[SessionManager] Voice connection ready for guild ${guildId}`);
+      } catch (err) {
+        connection.destroy();
+        throw new Error(`Failed to establish voice connection: ${err}`);
+      }
+
+      const audioBridge = new AudioBridge(connection);
+
+      session = {
+        guildId,
+        channelId: channel.id,
+        channelName: channel.name,
+        connection,
+        librespot: null,
+        audioBridge,
+        mode: 'spotify',
+        emptyTimeout: null,
+        startedAt: new Date(),
+      };
+      this.sessions.set(guildId, session);
     }
 
-    // 2. Initialize Audio Bridge
-    const audioBridge = new AudioBridge(connection);
-
-    // 3. Initialize Librespot Manager
+    // Initialize & start Librespot
     const deviceName = `${config.LIBRESPOT_DEVICE_NAME_PREFIX} - ${channel.guild.name.slice(0, 20)}`;
     const librespot = new LibrespotManager({
       guildId,
@@ -105,49 +160,91 @@ export class SessionManager {
       initialVolume: config.LIBRESPOT_INITIAL_VOLUME,
     });
 
-    // Connect Librespot volume changes directly to AudioBridge volume
     librespot.on('volume', (vol) => {
-      audioBridge.setVolume(vol);
+      session?.audioBridge.setVolume(vol);
     });
 
-    // 4. Start Librespot process and pipe PCM audio
     const pcmStream = await librespot.start();
-    audioBridge.playPcmStream(pcmStream);
+    session.audioBridge.playPcmStream(pcmStream);
 
-    // Handle unexpected Librespot exit
     librespot.on('exit', (code, signal) => {
       console.warn(
         `[SessionManager] Librespot process exited (code=${code}, signal=${signal}) for guild ${guildId}`
       );
-      if (this.sessions.has(guildId)) {
+      if (this.sessions.has(guildId) && session?.mode === 'spotify') {
         this.destroySession(guildId).catch((err) =>
           console.error('[SessionManager] Error during cleanup after exit:', err)
         );
       }
     });
 
-    // Handle Voice Connection disconnects/kicks
-    connection.on(VoiceConnectionStatus.Disconnected, async () => {
-      try {
-        await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
-          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
-        ]);
-        // Seems to be reconnecting to a new channel
-      } catch {
-        // Disconnected permanently
-        console.log(`[SessionManager] Voice connection disconnected permanently for guild ${guildId}`);
-        await this.destroySession(guildId);
+    session.mode = 'spotify';
+    session.librespot = librespot;
+    return session;
+  }
+
+  /**
+   * Retrieves an existing session or joins voice for a music queue (/play) session.
+   */
+  public async getOrCreateQueueSession(channel: VoiceBasedChannel): Promise<GuildSession> {
+    const guildId = channel.guild.id;
+    let session = this.sessions.get(guildId);
+
+    if (session) {
+      // If switching from Spotify Connect mode, stop Librespot
+      if (session.mode === 'spotify' && session.librespot) {
+        await session.librespot.stop().catch(() => {});
+        session.librespot = null;
+        session.audioBridge.stopPlayback();
       }
+      session.mode = 'queue';
+
+      // If user is in a different voice channel, move
+      if (session.channelId !== channel.id) {
+        session.connection = joinVoiceChannel({
+          channelId: channel.id,
+          guildId: channel.guild.id,
+          adapterCreator: channel.guild.voiceAdapterCreator,
+          selfDeaf: false,
+          selfMute: false,
+        });
+        session.channelId = channel.id;
+        session.channelName = channel.name;
+        await entersState(session.connection, VoiceConnectionStatus.Ready, 15_000);
+      }
+
+      return session;
+    }
+
+    console.log(`[SessionManager] Joining voice channel for Queue: "${channel.name}" (${channel.id})`);
+    const connection = joinVoiceChannel({
+      channelId: channel.id,
+      guildId: channel.guild.id,
+      adapterCreator: channel.guild.voiceAdapterCreator,
+      selfDeaf: false,
+      selfMute: false,
     });
 
-    const session: GuildSession = {
+    this.setupConnectionListeners(connection, guildId);
+
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+      console.log(`[SessionManager] Voice connection ready for guild ${guildId}`);
+    } catch (err) {
+      connection.destroy();
+      throw new Error(`Failed to establish voice connection: ${err}`);
+    }
+
+    const audioBridge = new AudioBridge(connection);
+
+    session = {
       guildId,
       channelId: channel.id,
       channelName: channel.name,
       connection,
-      librespot,
+      librespot: null,
       audioBridge,
+      mode: 'queue',
       emptyTimeout: null,
       startedAt: new Date(),
     };
@@ -170,16 +267,21 @@ export class SessionManager {
       session.emptyTimeout = null;
     }
 
+    QueueManager.getInstance().destroyQueue(guildId);
+
     try {
       session.audioBridge.destroy();
     } catch (err) {
       console.warn('[SessionManager] Error destroying AudioBridge:', err);
     }
 
-    try {
-      await session.librespot.stop();
-    } catch (err) {
-      console.warn('[SessionManager] Error stopping Librespot:', err);
+    if (session.librespot) {
+      try {
+        await session.librespot.stop();
+      } catch (err) {
+        console.warn('[SessionManager] Error stopping Librespot:', err);
+      }
+      session.librespot = null;
     }
 
     try {

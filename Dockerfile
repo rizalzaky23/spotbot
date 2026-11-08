@@ -23,13 +23,14 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# Install runtime dependencies: FFmpeg, ALSA, and precompiled librespot from Alpine Edge
+# Install runtime dependencies: FFmpeg, ALSA, yt-dlp, and precompiled librespot from Alpine Edge
 RUN apk add --no-cache \
     ffmpeg \
     alsa-lib \
     libgcc \
     libstdc++ \
     ca-certificates \
+    yt-dlp \
     && apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing librespot
 
 COPY package.json ./

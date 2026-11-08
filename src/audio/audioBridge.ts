@@ -40,6 +40,16 @@ export class AudioBridge extends EventEmitter {
         `[AudioBridge] Player state changed from ${oldState.status} to ${newState.status}`
       );
       this.emit('stateChange', { oldState: oldState.status, newState: newState.status });
+
+      // Emit trackEnd when transitioning to Idle from an active state
+      if (
+        (oldState.status === AudioPlayerStatus.Playing ||
+          oldState.status === AudioPlayerStatus.Buffering ||
+          oldState.status === AudioPlayerStatus.Paused) &&
+        newState.status === AudioPlayerStatus.Idle
+      ) {
+        this.emit('trackEnd');
+      }
     });
 
     this.player.on('error', (error) => {
@@ -70,6 +80,59 @@ export class AudioBridge extends EventEmitter {
 
     this.player.play(this.currentResource);
     console.log('[AudioBridge] Piped audio stream into Discord AudioPlayer.');
+  }
+
+  /**
+   * Resamples and plays an arbitrary stream (e.g. from yt-dlp) into Discord AudioPlayer.
+   */
+  public playArbitraryStream(inputStream: Readable, onCleanup?: () => void): void {
+    this.stopPlayback();
+
+    const { outputStream, destroy } = FFmpegResampler.createArbitraryResampleStream(inputStream);
+    this.resampleCleanup = () => {
+      try {
+        destroy();
+      } catch {
+        // Ignore
+      }
+      if (onCleanup) {
+        try {
+          onCleanup();
+        } catch {
+          // Ignore
+        }
+      }
+    };
+
+    this.currentResource = createAudioResource(outputStream, {
+      inputType: StreamType.Raw,
+      inlineVolume: true,
+    });
+
+    if (this.currentResource.volume) {
+      this.currentResource.volume.setVolume(this.volume);
+    }
+
+    this.player.play(this.currentResource);
+    console.log('[AudioBridge] Piped arbitrary audio stream into Discord AudioPlayer.');
+  }
+
+  /**
+   * Pauses current playback.
+   */
+  public pause(): boolean {
+    return this.player.pause();
+  }
+
+  /**
+   * Resumes paused playback.
+   */
+  public resume(): boolean {
+    return this.player.unpause();
+  }
+
+  public getPlayer(): AudioPlayer {
+    return this.player;
   }
 
   /**
