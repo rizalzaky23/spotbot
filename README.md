@@ -153,13 +153,23 @@ npm install
 
 ---
 
-## 🛠️ Pemeliharaan & Update Kode
+## 🚀 CI/CD Otomatis dengan GitHub Actions
 
-Untuk memperbarui bot di server ke versi terbaru dari GitHub:
+Repository ini sudah dilengkapi alur kerja **CI/CD Otomatis** (`.github/workflows/deploy.yml`):
+- Setiap kali Anda melakukan `git push origin main`, GitHub Actions akan otomatis:
+  1. Menghubungkan ke server `ssh.rizalzaky.cloud` secara aman melalui Cloudflare Tunnel.
+  2. Melakukan sinkronisasi kode terbaru (`git pull`).
+  3. Membangun ulang image Docker dan me-restart container `spotify-connect-discord-bot` tanpa downtime lama.
+- Anda tidak perlu lagi login SSH secara manual ke server setiap kali ada pembaruan kode!
+
+---
+
+## 🛠️ Pemeliharaan Manual (Opsional)
+
+Jika ingin melakukan rebuild manual langsung di server:
 ```bash
 cd /home/rizal/spotbot
-git pull origin main
-docker compose up -d --build
+./deploy.sh
 ```
 
 ---
