@@ -1,133 +1,133 @@
-# Spotify Connect Discord Bot (SpotBot) 🎵
+# SpotBot 🎵 — Spotify Connect & Smart AI Music Player for Discord
 
-> A production-ready Discord Bot acting as an open **Spotify Connect receiver**. Control playback directly from the official Spotify app (Desktop, Mobile, Web) and stream high-quality audio in real-time to your Discord Voice Channel with ultra-low latency.
-
----
-
-## 🏛️ Architecture & Data Pipeline
-
-```
-[ Spotify App (Mobile/Desktop/Web) ]
-                │
-                │ (Spotify Connect Protocol / Encrypted Stream)
-                ▼
-[ Librespot Process Manager (Headless Receiver) ]
-                │
-                │ (Raw PCM Stream: 44.1kHz, 16-bit, Stereo)
-                ▼
-[ FFmpeg Audio Resampler ]
-                │
-                │ (Resampled PCM: 48kHz, 16-bit, Stereo)
-                ▼
-[ Discord Voice Gateway (@discordjs/voice Opus Transcoder) ]
-                │
-                │ (Opus Frames over UDP socket)
-                ▼
-[ Discord Voice Channel ]
-```
+> **SpotBot** adalah bot Discord serbaguna dengan arsitektur **Dual-Mode**:
+> 1. 🟢 **Spotify Connect Receiver**: Kontrol audio langsung dari aplikasi Spotify resmi (Desktop/HP/Web) dengan streaming PCM real-time ke Voice Channel.
+> 2. 🎶 **Free Music Player & AI Harmonious Autoplay**: Putar lagu dari link YouTube/Spotify atau pencarian judul melalui perintah `/play`, dilengkapi algoritma cerdas yang **otomatis melanjutkan ke lagu berikutnya yang selaras** (irama, genre, dan suasana yang harmonis) tanpa henti.
 
 ---
 
-## ✨ Features
+## ✨ Fitur Utama
 
-- **Native Spotify UX**: No clunky text commands like `!play <url>`. Control play, pause, resume, seek, and volume directly from your Spotify app.
-- **Ultra Low-Latency Streaming**: Raw PCM audio is piped directly from `librespot` through a real-time FFmpeg resampler to Discord Voice Opus packets without intermediate file buffering.
-- **Dynamic Device Naming**: Each voice session automatically registers a unique device on Spotify Connect (e.g., `Discord Voice - [Server Name]`).
-- **Slash Commands**: Modern Discord Interactions (`/connect`, `/disconnect`, `/status`).
-- **Volume & Track Sync**: Stderr event parsing listens to track metadata, playback status, and volume changes.
-- **Auto-Disconnect**: Automatically leaves the channel and shuts down audio processes if the channel remains empty.
-- **Production Containerization**: Multi-stage Dockerfile compiling `librespot` from Rust source and bundling runtime dependencies.
-
----
-
-## 📋 Requirements
-
-1. **Spotify Premium**: Spotify Connect protocol strictly requires an active Spotify Premium account.
-2. **Discord Bot Token**: Create an application and bot at [Discord Developer Portal](https://discord.com/developers/applications).
-3. **Environment**:
-   - **Docker & Docker Compose** (Recommended), OR
-   - **Node.js 18+** with `librespot` installed locally.
+- **Dual-Mode Playback**:
+  - **Mode Spotify Connect**: Ubah Discord Voice menjadi perangkat speaker Spotify Connect (`/connect`).
+  - **Mode Music Player & Autoplay**: Putar lagu tanpa perlu akun Spotify Premium (`/play <judul/link>`).
+- **Harmonious Autoplay (AI Radio Mix)**:
+  - Saat lagu yang Anda putar habis, bot tidak akan berhenti atau meninggalkan room. Bot secara otomatis menganalisis video ID lagu tersebut dan menjalankan kurasi lagu radio mix YouTube (`list=RD<id>`) untuk memilih lagu berikutnya yang paling selaras secara genre, mood, dan tempo!
+- **Discord Voice E2EE (DAVE Protocol Ready)**:
+  - Mendukung standar keamanan Voice Discord terbaru (@snazzah/davey) sehingga anti-disconnect / close code 4017.
+- **Resampling Audio Real-time**:
+  - Pipa audio FFmpeg low-latency mengubah semua format audio secara langsung ke Discord 48kHz 16-bit Stereo PCM tanpa file temporary.
+- **Slash Commands Lengkap**:
+  - `/play`, `/skip`, `/queue`, `/pause`, `/resume`, `/stop`, `/autoplay`, `/connect`, `/disconnect`, `/status`.
 
 ---
 
-## 🚀 Quick Start (Docker)
+## 🎮 Daftar Perintah (Slash Commands)
 
-Docker is the easiest way to deploy SpotBot with all native audio tools (`librespot`, `ffmpeg`, `opus`) pre-configured.
+| Command | Parameter | Deskripsi |
+|---|---|---|
+| `/play` | `query` *(Wajib)* | Memutar musik dari link YouTube, Spotify track, atau pencarian judul lagu. Otomatis mengaktifkan Autoplay Lagu Selaras. |
+| `/skip` | - | Melewati lagu yang sedang diputar ke antrean berikutnya atau memicu lagu selaras baru. |
+| `/queue` | - | Menampilkan daftar antrean lagu dan status Autoplay. |
+| `/pause` | - | Menjeda sementara pemutaran musik. |
+| `/resume` | - | Melanjutkan kembali pemutaran musik yang dijeda. |
+| `/stop` | - | Menghentikan pemutaran musik dan membersihkan seluruh antrean. |
+| `/autoplay`| `status` *(Opsional)* | Mengaktifkan atau menonaktifkan fitur pemutaran otomatis lagu selaras (`true`/`false`). |
+| `/connect` | - | Masuk ke voice channel dan mengaktifkan speaker Spotify Connect. |
+| `/disconnect` | - | Memutuskan koneksi bot dari voice channel dan mematikan semua audio engine. |
+| `/status` | - | Menampilkan informasi lengkap status bot, channel, lagu aktif, dan metrik audio. |
 
-### 1. Clone Repository & Setup Environment
+---
 
+## 📋 Prasyarat (Requirements)
+
+1. **Discord Bot Token & Client ID**:
+   - Dapatkan dari [Discord Developer Portal](https://discord.com/developers/applications).
+   - Pastikan **Privileged Gateway Intents** (Guild Voice States & Message Content jika diperlukan) aktif.
+2. **Server / VPS / Komputer**:
+   - Linux (Ubuntu, Debian, CasaOS), macOS, atau Windows.
+   - **Docker & Docker Compose** (Sangat disarankan).
+3. **Akun Spotify (Opsional)**:
+   - Diperlukan akun **Spotify Premium** HANYA jika ingin menggunakan fitur Spotify Connect (`/connect`).
+   - Fitur `/play` dengan Autoplay Lagu Selaras **100% GRATIS** tanpa perlu Spotify Premium.
+
+---
+
+## 🚀 Panduan Instalasi & Menjalankan Bot
+
+### Opsi 1: Menggunakan Docker Compose (Direkomendasikan untuk Server/VPS)
+
+Docker adalah cara termudah dan paling stabil karena seluruh dependensi audio native (`librespot`, `ffmpeg`, `yt-dlp`, `opus`) sudah terpasang otomatis.
+
+#### 1. Clone Repository
 ```bash
 git clone https://github.com/rizalzaky23/spotbot.git
 cd spotbot
+```
+
+#### 2. Buat File Konfigurasi `.env`
+Salin template konfigurasi `.env.example`:
+```bash
 cp .env.example .env
 ```
-
-Edit `.env` and fill in your Discord credentials:
+Edit file `.env` (misalnya menggunakan `nano .env`):
 ```env
-DISCORD_TOKEN=your_bot_token_here
-DISCORD_CLIENT_ID=your_client_id_here
+# Kredensial Discord Bot (Wajib)
+DISCORD_TOKEN=MTE5...rahasia_token_anda
+DISCORD_CLIENT_ID=1567213039973830746
+
+# Optional: Isi ID Server untuk registrasi slash command instan saat testing
+DISCORD_GUILD_ID=1312757262976024628
+
+# Pengaturan Audio & Perangkat
+LIBRESPOT_DEVICE_NAME_PREFIX=SpotBot Speaker
+LIBRESPOT_BITRATE=160
+LIBRESPOT_INITIAL_VOLUME=100
+AUTO_DISCONNECT_EMPTY_TIMEOUT=60
 ```
 
-### 2. Run with Docker Compose
-
+#### 3. Build & Jalankan Container
 ```bash
 docker compose up -d --build
 ```
 
-Check the logs:
+#### 4. Cek Status & Log Bot
 ```bash
 docker compose logs -f spotbot
 ```
-
-> **Note on Network Discovery**:
-> `docker-compose.yml` uses `network_mode: host` so your phone or desktop Spotify client on the same local Wi-Fi / LAN can discover the bot via mDNS/Zeroconf.
-> If deploying on a **Cloud VPS** where LAN discovery is unavailable, provide `SPOTIFY_USERNAME` and `SPOTIFY_PASSWORD` in `.env` to log in directly to Spotify's cloud servers!
+Jika log menampilkan `[Bot] Logged in as SpotBot#...` dan `Successfully registered slash commands`, bot Anda sudah online dan siap digunakan di Discord!
 
 ---
 
-## 💻 Local Development Setup
+### Opsi 2: Instalasi Manual (Local Development)
 
-If running directly on macOS or Linux without Docker:
+Jika ingin menjalankan bot langsung di komputer lokal (macOS / Linux) tanpa Docker:
 
-### 1. Install Librespot
-
-- **macOS (Homebrew)**:
+#### 1. Pasang Dependensi Sistem
+- **macOS**:
   ```bash
-  brew install librespot
+  brew install ffmpeg yt-dlp librespot node@22
   ```
 - **Ubuntu / Debian**:
   ```bash
-  sudo apt-get update
-  sudo apt-get install build-essential libasound2-dev pkg-config
-  cargo install librespot --no-default-features --features "pipe-backend with-libmdns"
-  ```
-- **Arch Linux**:
-  ```bash
-  sudo pacman -S librespot
+  sudo apt update
+  sudo apt install -y ffmpeg python3 build-essential
+  # Pasang yt-dlp
+  sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+  sudo chmod a+rx /usr/local/bin/yt-dlp
   ```
 
-### 2. Install Project Dependencies
-
+#### 2. Install Node Dependencies
 ```bash
 npm install
 ```
 
-### 3. Configure Environment
-
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-
-Ensure `LIBRESPOT_PATH` points to your `librespot` executable (or defaults to `librespot` if it is in your `PATH`).
-
-### 4. Build & Run
-
-- **Development mode** (hot-reload with `tsx`):
+#### 3. Jalankan Bot
+- **Mode Development** (Auto-restart jika ada perubahan kodingan):
   ```bash
   npm run dev
   ```
-- **Production build**:
+- **Mode Production**:
   ```bash
   npm run build
   npm start
@@ -135,72 +135,35 @@ Ensure `LIBRESPOT_PATH` points to your `librespot` executable (or defaults to `l
 
 ---
 
-## 🎮 Discord Slash Commands
+## 🎵 Cara Penggunaan
 
-| Command | Description |
-|---|---|
-| `/connect` | Joins your voice channel and boots up the Spotify Connect receiver. |
-| `/disconnect` | Stops playback, kills the `librespot` child process, and leaves voice. |
-| `/status` | Displays active playback status, current track name, bitrate, and volume. |
+### Menggunakan Free Player & Autoplay Selaras:
+1. Masuk ke Voice Channel mana pun di server Discord Anda.
+2. Ketik `/play query: Kahitna Cantik` (atau masukkan link YouTube / Spotify).
+3. Bot akan masuk ke voice channel dan langsung memutar lagu tersebut.
+4. Ketika lagu tersebut selesai, bot **secara otomatis mencarikan lagu berikutnya yang berirama dan bergenre selaras** (contoh: *Chrisye - Kisah Cintaku*, *Kahitna - Soulmate*, dll.) tanpa Anda perlu menambahkan lagu manual!
 
----
-
-## 🎧 How to Listen to Spotify on Discord
-
-1. Join any voice channel in your Discord server.
-2. Run `/connect` in any text channel.
-3. Open the **Spotify app** on your Phone, Desktop, or Web.
-4. Click the **Connect to a device** button (speaker/monitor icon at the bottom right).
-5. Select **"Discord Voice - [Server Name]"**.
-6. Play any song, playlist, or podcast — audio will instantly stream into Discord!
+### Menggunakan Spotify Connect:
+1. Masuk ke Voice Channel di Discord.
+2. Jalankan perintah `/connect`.
+3. Buka aplikasi Spotify di HP atau Laptop Anda.
+4. Klik tombol **Connect to a device** (ikon speaker/monitor).
+5. Pilih **"SpotBot Speaker - [Nama Server]"**.
+6. Putar lagu apa saja di Spotify, dan suaranya langsung terhubung ke Discord Voice!
 
 ---
 
-## 📂 Project Structure
+## 🛠️ Pemeliharaan & Update Kode
 
-```
-├── src/
-│   ├── audio/
-│   │   ├── audioBridge.ts       # Bridge between PCM stream and Discord AudioPlayer
-│   │   └── ffmpegResampler.ts   # Low-latency 44.1kHz -> 48kHz PCM resampler
-│   ├── bot/
-│   │   ├── client.ts            # Discord client initialization
-│   │   ├── commands/            # Slash commands (/connect, /disconnect, /status)
-│   │   ├── events/              # Event listeners (ready, interaction, voiceState)
-│   │   └── sessionManager.ts    # Per-guild voice & Librespot session lifecycle
-│   ├── config/
-│   │   └── env.ts               # Zod-validated environment config & audio constants
-│   ├── librespot/
-│   │   └── librespotManager.ts  # Controlled child process manager for Librespot CLI
-│   └── index.ts                 # Main bootstrap entry point
-├── Dockerfile                   # Multi-stage production container
-├── docker-compose.yml           # Compose specification with host networking
-├── .env.example                 # Environment configuration template
-├── tsconfig.json                # TypeScript compiler configuration
-└── package.json                 # Project dependencies & scripts
+Untuk memperbarui bot di server ke versi terbaru dari GitHub:
+```bash
+cd /home/rizal/spotbot
+git pull origin main
+docker compose up -d --build
 ```
 
 ---
 
-## 🛠️ Configuration Options (`.env`)
-
-| Variable | Default | Description |
-|---|---|---|
-| `DISCORD_TOKEN` | *Required* | Discord Bot Token |
-| `DISCORD_CLIENT_ID` | *Required* | Application ID for registering Slash Commands |
-| `DISCORD_GUILD_ID` | *Optional* | Target Guild ID for instant command registration during dev |
-| `LIBRESPOT_PATH` | `librespot` | Path to `librespot` binary |
-| `LIBRESPOT_DEVICE_NAME_PREFIX` | `Discord Voice` | Prefix name displayed in the Spotify Connect menu |
-| `LIBRESPOT_BITRATE` | `160` | Audio stream quality (`96`, `160`, or `320` kbps) |
-| `LIBRESPOT_INITIAL_VOLUME` | `100` | Initial volume level (0-100) |
-| `LIBRESPOT_CACHE_DIR` | `./cache/librespot` | Directory to cache Spotify session tokens |
-| `SPOTIFY_USERNAME` | *Optional* | Spotify username (for Cloud VPS headless login) |
-| `SPOTIFY_PASSWORD` | *Optional* | Spotify password |
-| `ENABLE_DISCOVERY` | `true` | Enable Zeroconf mDNS local network discovery |
-| `AUTO_DISCONNECT_EMPTY_TIMEOUT`| `60` | Auto-disconnect delay in seconds when voice channel is empty |
-
----
-
-## 📄 License
-
-MIT License. Designed and maintained for private and community voice servers.
+## 📄 Lisensi
+Didistribusikan di bawah lisensi MIT.
+Dibuat untuk komunitas penikmat musik dengan kualitas audio jernih dan pengalaman tanpa batas.
